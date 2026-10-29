@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10172a" />
+  <title>Orbit — private file tools</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+      --bg: #0b1020;
+      --panel: rgba(18, 26, 47, .82);
+      --panel-solid: #121a2f;
+      --line: rgba(157, 176, 222, .14);
+      --text: #edf2ff;
+      --muted: #9aa8c4;
+      --accent: #9c8cff;
+      --accent-strong: #7862ff;
+      --mint: #70e4c4;
+      --danger: #ff8291;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .24);
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f5fc;
+      --panel: rgba(255, 255, 255, .86);
+      --panel-solid: #fff;
+      --line: rgba(53, 65, 98, .13);
+      --text: #182039;
+      --muted: #66718b;
+      --accent: #6551e8;
+      --accent-strong: #5140ce;
+      --mint: #087c68;
+      --danger: #bf354b;
+      --shadow: 0 20px 60px rgba(36, 45, 80, .1);
+    }
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 10% -15%, rgba(120, 98, 255, .22), transparent 38rem),
+        radial-gradient(ellipse at 94% 4%, rgba(46, 204, 172, .12), transparent 30rem),
+        var(--bg);
+      transition: background-color .2s, color .2s;
+    }
+    button, input, select { font: inherit; }
+    button, a, select, input { -webkit-tap-highlight-color: transparent; }
+    button { color: inherit; }
+    a { color: var(--accent); }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 3px; }
+    .shell { width: min(1120px, calc(100% - 36px)); margin: 0 auto; padding: 28px 0 48px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 42px; }
+    .brand { display: flex; align-items: center; gap: 12px; color: var(--text); text-decoration: none; }
+    .brand-mark {
+      display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(177, 160, 255, .35);
+      border-radius: 14px; color: white; background: linear-gradient(145deg, #9b87ff, #5c4bd5);
+      box-shadow: 0 8px 24px rgba(108, 88, 232, .3); font-size: 22px;
+    }
+    .brand-name { font-size: 17px; font-weight: 800; letter-spacing: -.04em; }
+    .brand-note { margin-top: 2px; color: var(--muted); font-size: 11px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .privacy-pill { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .privacy-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 12px color-mix(in srgb, var(--mint) 75%, transparent); }
+    .icon-button, .nav-link, .button, .select-control {
+      border: 1px solid var(--line); border-radius: 12px; background: var(--panel); transition: .18s ease;
+    }
+    .icon-button { min-width: 40px; height: 40px; cursor: pointer; }
+    .icon-button:hover, .nav-link:hover, .button-secondary:hover, .select-control:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); transform: translateY(-1px); }
+    .layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 28px; }
+    .sidebar { position: sticky; top: 20px; }
+    .nav-label { margin: 0 0 10px 12px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    .nav-list { display: grid; gap: 6px; }
+    .nav-link { display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px; color: var(--muted); font-size: 13px; font-weight: 650; text-align: left; text-decoration: none; cursor: pointer; }
+    .nav-link[aria-current="page"] { border-color: rgba(156, 140, 255, .3); color: var(--text); background: linear-gradient(110deg, rgba(120, 98, 255, .2), rgba(120, 98, 255, .06)); }
+    .nav-icon { display: grid; width: 23px; height: 23px; place-items: center; border-radius: 7px; background: rgba(149, 163, 194, .1); }
+    .sidebar-note { margin-top: 28px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); background: var(--panel); font-size: 12px; line-height: 1.65; }
+    .sidebar-note strong { display: block; margin-bottom: 5px; color: var(--text); font-size: 13px; }
+    .content { min-width: 0; }
+    .page { display: none; animation: page-in .24s ease both; }
+    .page.active { display: block; }
+    @keyframes page-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    .page-heading { margin: 0 0 24px; }
+    .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(26px, 4vw, 36px); letter-spacing: -.055em; line-height: 1.15; }
+    .subtitle { max-width: 650px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.65; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat-card, .panel, .drop-zone, .history-item {
+      border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .stat-card { min-width: 0; padding: 17px; }
+    .stat-label { color: var(--muted); font-size: 11px; font-weight: 650; }
+    .stat-value { display: block; margin-top: 8px; font-size: 23px; font-weight: 800; letter-spacing: -.04em; }
+    .panel { padding: 21px; }
+    .panel + .panel, .panel + .drop-zone, .drop-zone + .panel { margin-top: 14px; }
+    .panel-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 14px; font-size: 15px; font-weight: 750; letter-spacing: -.02em; }
+    .panel-hint { margin: -7px 0 15px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .drop-zone {
+      position: relative; display: grid; min-height: 215px; place-items: center; padding: 26px; border-style: dashed;
+      border-color: rgba(156, 140, 255, .4); text-align: center; cursor: pointer; overflow: hidden;
+      background: radial-gradient(ellipse at 50% 0%, rgba(120, 98, 255, .12), transparent 70%), var(--panel);
+      transition: border-color .2s, transform .2s, background-color .2s;
+    }
+    .drop-zone:hover, .drop-zone.drag-active { border-color: var(--accent); transform: translateY(-1px); }
+    .drop-zone.drag-active { background-color: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+    .drop-content { pointer-events: none; }
+    .upload-symbol { display: grid; width: 48px; height: 48px; place-items: center; margin: 0 auto 13px; border: 1px solid var(--line); border-radius: 16px; background: rgba(156, 140, 255, .12); font-size: 22px; }
+    .drop-title { margin: 0; font-size: 16px; font-weight: 750; }
+    .drop-copy { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .drop-copy strong { color: var(--text); }
+    .drop-meta { margin: 11px 0 0; color: var(--muted); font-size: 11px; }
+    .drop-zone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
+    .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+    .control-group { display: grid; flex: 1 1 180px; gap: 8px; }
+    .control-group label { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .select-control { width: 100%; min-height: 42px; padding: 0 12px; color: var(--text); }
+    .range-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .range-number { min-width: 45px; color: var(--accent); font-size: 13px; font-weight: 800; text-align: right; }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 18px; }
+    .button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 8px; padding: 0 15px; font-size: 12px; font-weight: 750; cursor: pointer; }
+    .button-primary { border-color: transparent; color: #fff; background: linear-gradient(120deg, var(--accent-strong), #8b75ff); box-shadow: 0 8px 22px rgba(103, 82, 226, .22); }
+    .button-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+    .button-secondary { color: var(--text); }
+    .button-success { border-color: rgba(112, 228, 196, .2); color: var(--mint); background: rgba(36, 165, 137, .1); }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .status-line { min-height: 20px; margin: 14px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .status-line[data-kind="error"] { color: var(--danger); }
+    .status-line[data-kind="success"] { color: var(--mint); }
+    .progress-wrap { display: none; margin-top: 14px; }
+    .progress-wrap.visible { display: block; }
+    progress { width: 100%; height: 8px; overflow: hidden; border: 0; border-radius: 999px; accent-color: var(--accent); }
+    progress::-webkit-progress-bar { border-radius: 999px; background: rgba(143, 156, 187, .17); }
+    progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, var(--accent-strong), var(--mint)); }
+    progress::-moz-progress-bar { border-radius: 999px; background: linear-gradient(90deg, var(--accent-strong), var(--mint)); }
+    .progress-label { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--muted); font-size: 11px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+    th { padding: 11px 10px; color: var(--muted); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+    td { padding: 12px 10px; border-top: 1px solid var(--line); vertical-align: middle; }
+    td:first-child { max-width: 230px; overflow-wrap: anywhere; font-weight: 650; }
+    .table-empty { padding: 25px 10px; color: var(--muted); text-align: center; }
+    .table-error { color: var(--danger); }
+    .history-list { display: grid; gap: 10px; }
+    .history-item { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px; box-shadow: none; }
+    .history-name { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+    .history-detail { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .history-badge { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; color: var(--mint); background: rgba(36, 165, 137, .12); font-size: 10px; font-weight: 750; }
+    .settings-grid { display: grid; gap: 14px; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 0; border-bottom: 1px solid var(--line); }
+    .setting-row:last-child { padding-bottom: 0; border-bottom: 0; }
+    .setting-name { font-size: 13px; font-weight: 700; }
+    .setting-description { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .footnote { margin: 18px 0 0; color: var(--muted); font-size: 10px; line-height: 1.7; }
+    footer { margin-top: 28px; color: var(--muted); font-size: 10px; line-height: 1.7; text-align: center; }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 28px, 620px); padding-top: 18px; }
+      .topbar { margin-bottom: 24px; }
+      .layout { grid-template-columns: 1fr; gap: 18px; }
+      .sidebar { position: static; overflow-x: auto; }
+      .nav-label, .sidebar-note { display: none; }
+      .nav-list { display: flex; min-width: max-content; gap: 7px; }
+      .nav-link { width: auto; padding: 9px 11px; }
+      .nav-link span:last-child { white-space: nowrap; }
+      .page-heading { margin-bottom: 17px; }
+    }
+    @media (max-width: 480px) {
+      .privacy-pill { display: none; }
+      .stats { gap: 7px; }
+      .stat-card { padding: 12px 10px; border-radius: 14px; }
+      .stat-value { font-size: 18px; }
+      .stat-label { font-size: 10px; }
+      .panel { padding: 16px; }
+      .drop-zone { min-height: 190px; padding: 20px 14px; }
+      .actions .button { flex: 1 1 auto; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="#compress" aria-label="orbit home">
+        <span class="brand-mark" aria-hidden="true">◈</span>
+        <span><span class="brand-name">orbit</span><span class="brand-note" style="display:block">PRIVATE FILE STUDIO</span></span>
+      </a>
+      <div class="top-actions">
+        <span class="privacy-pill"><span class="privacy-dot"></span> Files stay on this device</span>
+        <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle color theme" title="Toggle color theme">☼</button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" aria-label="Main navigation">
+        <p class="nav-label">Workspace</p>
+        <nav class="nav-list">
+          <a class="nav-link" href="#compress" data-nav="compress" aria-current="page"><span class="nav-icon">◉</span><span>Compress</span></a>
+          <a class="nav-link" href="#convert" data-nav="convert"><span class="nav-icon">⇄</span><span>Convert</span></a>
+          <a class="nav-link" href="#history" data-nav="history"><span class="nav-icon">◷</span><span>History</span></a>
+          <a class="nav-link" href="#settings" data-nav="settings"><span class="nav-icon">⚙</span><span>Settings</span></a>
+        </nav>
+        <div class="sidebar-note"><strong>Private by design</strong>Your files are processed on your device. Video conversion loads its processor only when you use it.</div>
+      </aside>
+      <main class="content">
+        <section class="page active" id="page-compress" data-page="compress">
+          <div class="page-heading"><p class="eyebrow">Workspace / Compress</p><h1>Make files lighter.</h1><p class="subtitle">Compress images, PDFs and video in one calm, simple workspace. Your originals are never changed.</p></div>
+          <div class="stats" aria-label="Session totals">
+            <div class="stat-card"><span class="stat-label">Completed</span><strong class="stat-value" id="statFiles">0</strong></div>
+            <div class="stat-card"><span class="stat-label">Original size</span><strong class="stat-value" id="statOriginal">0 B</strong></div>
+            <div class="stat-card"><span class="stat-label">Space saved</span><strong class="stat-value" id="statSaved">0 B</strong></div>
+          </div>
+          <label class="drop-zone" id="dropZone" for="fileInput">
+            <span class="drop-content"><span class="upload-symbol">↑</span><span class="drop-title">Drop files to get started</span><span class="drop-copy">or <strong>browse your device</strong><br>Images · PDF · MP4 · MOV · WebM · MKV</span><span class="drop-meta" id="queueInfo">Up to 100 files · 250 MiB per file</span></span>
+            <input id="fileInput" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.pdf,.mp4,.mov,.webm,.mkv,image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,application/pdf,video/mp4,video/quicktime,video/webm,video/x-matroska" />
+          </label>
+          <section class="panel">
+            <h2 class="panel-title">Compression settings <span class="privacy-pill"><span class="privacy-dot"></span> Local processing</span></h2>
+            <p class="panel-hint">Images become WebP, PDFs are structurally optimized, and videos are recorded to WebM using your browser’s native codecs. GIF conversion uses the first frame.</p>
+            <div class="control-group"><div class="range-row"><label for="quality">Image and video quality</label><span id="qualityValue" class="range-number">75%</span></div><input id="quality" type="range" min="10" max="95" value="75" /></div>
+            <div class="actions">
+              <button id="compressBtn" class="button button-primary" type="button" disabled>✦ Compress selected</button>
+              <button id="zipBtn" class="button button-success" type="button" disabled>↓ Download all as ZIP</button>
+              <button id="clearBtn" class="button button-secondary" type="button">Clear queue</button>
+            </div>
+            <div id="progressWrap" class="progress-wrap"><div class="progress-label"><span id="progressLabel">Ready</span><span id="progressPercent">0%</span></div><progress id="progressBar" max="100" value="0"></progress></div>
+            <p id="compressStatus" class="status-line" role="status" aria-live="polite"></p>
+          </section>
+          <section class="panel">
+            <h2 class="panel-title">Your files</h2>
+            <div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Original</th><th>Output</th><th>Saved</th><th>Action</th></tr></thead><tbody id="resultsBody"><tr><td class="table-empty" colspan="6">Your files and results will appear here.</td></tr></tbody></table></div>
+          </section>
+          <p class="footnote">PDF optimization may not reduce every document. Large video conversions use more memory and can take time. Check output quality before deleting originals.</p>
+        </section>
+        <section class="page" id="page-convert" data-page="convert">
+          <div class="page-heading"><p class="eyebrow">Workspace / Convert</p><h1>One format to another.</h1><p class="subtitle">Pick a destination format. Outputs are created locally and downloaded only when you choose.</p></div>
+          <label class="drop-zone" id="convertDropZone" for="convertFileInput">
+            <span class="drop-content"><span class="upload-symbol">⇄</span><span class="drop-title">Choose files to convert</span><span class="drop-copy">Images · PDF · MP4 · MOV · WebM · MKV</span><span class="drop-meta" id="convertQueueInfo">Select one or more files</span></span>
+            <input id="convertFileInput" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.pdf,.mp4,.mov,.webm,.mkv,image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,application/pdf,video/mp4,video/quicktime,video/webm,video/x-matroska" />
+          </label>
+          <section class="panel">
+            <h2 class="panel-title">Output format</h2>
+            <p class="panel-hint">Common image formats convert to WebP, JPEG or PNG. PDF files remain PDF. Video can be converted to MP4 or WebM.</p>
+            <div class="controls">
+              <div class="control-group"><label for="outputFormat">Convert to</label><select class="select-control" id="outputFormat"><option value="webp">WebP image</option><option value="jpeg">JPEG image</option><option value="png">PNG image</option><option value="pdf">PDF document</option><option value="mp4">MP4 video</option><option value="webm">WebM video</option></select></div>
+              <div class="control-group"><label for="convertQuality">Quality</label><div class="range-row"><input id="convertQuality" type="range" min="10" max="95" value="85" /><span id="convertQualityValue" class="range-number">85%</span></div></div>
+            </div>
+            <div class="actions"><button id="convertBtn" class="button button-primary" type="button" disabled>⇄ Convert selected</button><button id="convertClearBtn" class="button button-secondary" type="button">Clear selection</button></div>
+            <div id="convertProgressWrap" class="progress-wrap"><div class="progress-label"><span id="convertProgressLabel">Ready</span><span id="convertProgressPercent">0%</span></div><progress id="convertProgressBar" max="100" value="0"></progress></div>
+            <p id="convertStatus" class="status-line" role="status" aria-live="polite"></p>
+          </section>
+          <section class="panel"><h2 class="panel-title">Conversion results</h2><div class="table-wrap"><table><thead><tr><th>File</th><th>Type</th><th>Original</th><th>Output</th><th>Size</th><th>Action</th></tr></thead><tbody id="convertResultsBody"><tr><td class="table-empty" colspan="6">Converted files will appear here.</td></tr></tbody></table></div></section>
+          <p class="footnote">GIFs are converted from their first frame; animation is not retained. TIFF decoding depends on a small on-demand helper. Browser codec support varies, and unsupported or damaged files will show an actionable error.</p>
+        </section>
+        <section class="page" id="page-history" data-page="history">
+          <div class="page-heading"><p class="eyebrow">Workspace / History</p><h1>Your recent work.</h1><p class="subtitle">A lightweight log of completed jobs on this device. File contents are never stored in history.</p></div>
+          <section class="panel"><div class="panel-title"><span>Recent activity</span><button id="clearHistoryBtn" class="button button-secondary" type="button">Clear history</button></div><div class="history-list" id="historyList"><p class="table-empty">Completed jobs will appear here.</p></div></section>
+        </section>
+        <section class="page" id="page-settings" data-page="settings">
+          <div class="page-heading"><p class="eyebrow">Workspace / Settings</p><h1>Make it yours.</h1><p class="subtitle">A few thoughtful defaults to keep the workspace comfortable and predictable.</p></div>
+          <section class="panel settings-grid">
+            <h2 class="panel-title">Appearance</h2>
+            <div class="setting-row"><div><div class="setting-name">Color theme</div><div class="setting-description">Choose a bright or dim workspace.</div></div><select id="themeSelect" class="select-control" style="max-width:150px"><option value="dark">Dark</option><option value="light">Light</option></select></div>
+          </section>
+          <section class="panel settings-grid">
+            <h2 class="panel-title">Processing & privacy</h2>
+            <div class="setting-row"><div><div class="setting-name">Files are processed locally</div><div class="setting-description">Selected files are not uploaded to a server. Optional libraries are loaded from a CDN when required.</div></div><span class="history-badge">On device</span></div>
+            <div class="setting-row"><div><div class="setting-name">Video processing</div><div class="setting-description">Video encoding uses browser-native codecs, so no large processing engine is downloaded. Available formats depend on your browser.</div></div><span class="history-badge">On device</span></div>
+            <div class="setting-row"><div><div class="setting-name">Session limits</div><div class="setting-description">Up to 100 selected files, 250 MiB each, and 80 megapixels per decoded image.</div></div></div>
+          </section>
+          <p class="footnote">Orbit uses your browser’s image and video codecs, pdf-lib for PDF structure optimization, and optional helpers from jsDelivr only when needed.</p>
+        </section>
+      </main>
+    </div>
+    <footer>Orbit File Studio · private, local, and lightweight by default</footer>
+  </div>
+  <script>
+    "use strict";
+    const $ = id => document.getElementById(id);
+    const state = {
+      queues: { compress: [], convert: [] },
+      results: { compress: [], convert: [] },
+      busy: false,
+      tiffPromise: null,
+      history: loadHistory()
+    };
+    const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff"]);
+    const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "mkv"]);
+    const MAX_FILE_SIZE = 250 * 1024 * 1024;
+    const MAX_FILES = 100;
+    const MAX_PIXELS = 80_000_000;
+    const MIME_BY_FORMAT = { webp: "image/webp", jpeg: "image/jpeg", png: "image/png", pdf: "application/pdf", mp4: "video/mp4", webm: "video/webm" };
+
+    function loadHistory() {
+      try {
+        const history = JSON.parse(localStorage.getItem("orbit-history") || "[]");
+        return Array.isArray(history) ? history.filter(entry =>
+          entry && typeof entry === "object"
+          && typeof entry.name === "string"
+          && typeof entry.outputName === "string"
+          && typeof entry.operation === "string"
+          && Number.isFinite(entry.size) && entry.size >= 0
+          && typeof entry.date === "string"
+        ).slice(0, 40) : [];
+      } catch {
+        return [];
+      }
+    }
+    function saveHistory() {
+      state.history = state.history.slice(0, 40);
+      try { localStorage.setItem("orbit-history", JSON.stringify(state.history)); } catch {}
+      renderHistory();
+    }
+    function addHistory(file, outputName, operation, size) {
+      state.history.unshift({ name: file.name, outputName, operation, size, date: new Date().toISOString() });
+      saveHistory();
+    }
+    function currentPage() {
+      const page = location.hash.slice(1);
+      return ["compress", "convert", "history", "settings"].includes(page) ? page : "compress";
+    }
+    function showPage() {
+      const page = currentPage();
+      document.querySelectorAll("[data-page]").forEach(el => { el.classList.toggle("active", el.dataset.page === page); });
+      document.querySelectorAll("[data-nav]").forEach(el => {
+        if (el.dataset.nav === page) el.setAttribute("aria-current", "page");
+        else el.removeAttribute("aria-current");
+      });
+    }
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes) || bytes < 0) return "—";
+      if (bytes < 1024) return `${bytes} B`;
+      const units = ["KiB", "MiB", "GiB", "TiB"];
+      let size = bytes / 1024, index = 0;
+      while (size >= 1024 && index < units.length - 1) { size /= 1024; index++; }
+      return `${size.toFixed(1)} ${units[index]}`;
+    }
+    function extension(file) {
+      const pieces = file.name.toLowerCase().split(".");
+      return pieces.length > 1 ? pieces.pop() : "";
+    }
+    function fileKind(file) {
+      const ext = extension(file);
+      if (ext === "pdf" || file.type === "application/pdf") return "pdf";
+      if (IMAGE_EXTENSIONS.has(ext) || file.type.startsWith("image/")) return "image";
+      if (VIDEO_EXTENSIONS.has(ext) || file.type.startsWith("video/")) return "video";
+      return "unsupported";
+    }
+    function safeBaseName(name) {
+      return name.replace(/\.[^.]+$/, "").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_") || "file";
+    }
+    function getOutputFormat(operation, file) {
+      if (operation === "compress") {
+        if (fileKind(file) === "image") return "webp";
+        if (fileKind(file) === "video") return "webm";
+        return "pdf";
+      }
+      return $("outputFormat").value;
+    }
+    function makeOutputName(file, format, operation) {
+      const suffix = operation === "compress" ? "_compressed" : "_converted";
+      const extensionName = format === "jpeg" ? "jpg" : format;
+      return `${safeBaseName(file.name)}${suffix}.${extensionName}`;
+    }
+    function setStatus(id, message, kind = "") {
+      const el = $(id);
+      el.textContent = message;
+      el.dataset.kind = kind;
+    }
+    function updateStats() {
+      const successful = state.results.compress.filter(result => result.blob);
+      const original = successful.reduce((sum, result) => sum + result.file.size, 0);
+      const output = successful.reduce((sum, result) => sum + result.blob.size, 0);
+      const saved = original - output;
+      $("statFiles").textContent = String(successful.length);
+      $("statOriginal").textContent = formatBytes(original);
+      $("statSaved").textContent = `${saved < 0 ? "−" : ""}${formatBytes(Math.abs(saved))}`;
+    }
+    function renderQueue(operation) {
+      const queue = state.queues[operation];
+      const info = operation === "compress" ? $("queueInfo") : $("convertQueueInfo");
+      info.textContent = queue.length ? `${queue.length} file${queue.length === 1 ? "" : "s"} selected` : (operation === "compress" ? "Up to 100 files · 250 MiB per file" : "Select one or more files");
+      const noVideoEncoder = operation === "convert" && queue.length > 0
+        && fileKind(queue[0]) === "video" && !supportedVideoMime($("outputFormat").value);
+      $(operation === "compress" ? "compressBtn" : "convertBtn").disabled = state.busy || !queue.length || noVideoEncoder;
+    }
+    function renderResults(operation) {
+      const body = $(operation === "compress" ? "resultsBody" : "convertResultsBody");
+      const results = state.results[operation];
+      body.replaceChildren();
+      if (!results.length) {
+        const row = body.insertRow(), cell = row.insertCell();
+        cell.colSpan = 6; cell.className = "table-empty"; cell.textContent = operation === "compress" ? "Your files and results will appear here." : "Converted files will appear here.";
+      }
+      results.forEach((result, index) => {
+        const row = body.insertRow();
+        const savedPercent = result.blob ? (result.file.size - result.blob.size) / result.file.size * 100 : null;
+        const values = operation === "compress"
+          ? [result.file.name, fileKind(result.file).toUpperCase(), formatBytes(result.file.size),
+            result.blob ? formatBytes(result.blob.size) : (result.error || "—"), savedPercent === null ? "—" : `${savedPercent.toFixed(1)}%`]
+          : [result.file.name, fileKind(result.file).toUpperCase(), formatBytes(result.file.size),
+            result.blob ? result.outputName : (result.error || "—"), result.blob ? formatBytes(result.blob.size) : (result.error ? "Failed" : "Waiting")];
+        values.forEach((value, valueIndex) => {
+          const cell = row.insertCell();
+          cell.textContent = value;
+          if (valueIndex === 4 && result.error) cell.className = "table-error";
+          if (valueIndex === 4 && savedPercent !== null) cell.style.color = savedPercent >= 0 ? "var(--mint)" : "var(--danger)";
+        });
+        const action = row.insertCell();
+        if (result.blob) {
+          if (!result.url) result.url = URL.createObjectURL(result.blob);
+          const link = document.createElement("a");
+          link.href = result.url;
+          link.download = result.outputName;
+          link.textContent = "Download";
+          link.setAttribute("aria-label", `Download ${result.outputName}`);
+          action.append(link);
+        } else if (result.error) {
+          action.textContent = "Failed";
+          action.className = "table-error";
+        } else action.textContent = "Queued";
+        row.dataset.index = String(index);
+      });
+      if (operation === "compress") {
+        $("zipBtn").disabled = state.busy || !results.some(result => result.blob);
+        updateStats();
+      }
+    }
+    function releaseResults(operation) {
+      state.results[operation].forEach(result => { if (result.url) URL.revokeObjectURL(result.url); });
+      state.results[operation] = [];
+    }
+    function validateFiles(fileList, operation) {
+      if (state.busy) return;
+      const accepted = [], rejected = [];
+      const known = new Set(state.queues[operation].map(file => `${file.name}:${file.size}:${file.lastModified}`));
+      let convertKind = operation === "convert" && state.queues.convert.length ? fileKind(state.queues.convert[0]) : null;
+      for (const file of fileList) {
+        const kind = fileKind(file), key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (kind === "unsupported") rejected.push(`${file.name}: unsupported format`);
+        else if (file.size > MAX_FILE_SIZE) rejected.push(`${file.name}: larger than 250 MiB`);
+        else if (!file.size) rejected.push(`${file.name}: file is empty`);
+        else if (known.has(key)) rejected.push(`${file.name}: already selected`);
+        else if (state.queues[operation].length + accepted.length >= MAX_FILES) rejected.push(`${file.name}: 100-file limit reached`);
+        else if (operation === "convert" && convertKind && convertKind !== kind) rejected.push(`${file.name}: convert one file type at a time; clear the current selection first`);
+        else { accepted.push(file); known.add(key); if (operation === "convert") convertKind = kind; }
+      }
+      state.queues[operation].push(...accepted);
+      if (accepted.length) {
+        if (operation === "convert" && state.queues.convert.length) setOutputOptions();
+        releaseResults(operation);
+        resetProgress(operation);
+      }
+      renderQueue(operation);
+      if (accepted.length) renderResults(operation);
+      setStatus(operation === "compress" ? "compressStatus" : "convertStatus",
+        [accepted.length ? `${accepted.length} file${accepted.length === 1 ? "" : "s"} added.` : "", rejected.length ? `Not added: ${rejected.join("; ")}` : ""].filter(Boolean).join(" "),
+        rejected.length && !accepted.length ? "error" : "");
+    }
+    function isCompatibleTarget(kind, format) {
+      return (kind === "image" && ["webp", "jpeg", "png"].includes(format))
+        || (kind === "pdf" && format === "pdf")
+        || (kind === "video" && ["mp4", "webm"].includes(format));
+    }
+    function setOutputOptions() {
+      const select = $("outputFormat");
+      const currentFormat = select.value;
+      const kind = state.queues.convert.length ? fileKind(state.queues.convert[0]) : "image";
+      const options = kind === "pdf" ? [["pdf", "PDF document"]]
+        : kind === "video" ? [["webm", "WebM video"], ["mp4", "MP4 video"]].filter(([format]) => supportedVideoMime(format))
+        : [["webp", "WebP image"], ["jpeg", "JPEG image"], ["png", "PNG image"]];
+      if (!options.length) options.push(["unsupported", "Video output unavailable in this browser"]);
+      select.replaceChildren(...options.map(([value, label]) => {
+        const option = document.createElement("option"); option.value = value; option.textContent = label; return option;
+      }));
+      if (options.some(([value]) => value === currentFormat)) select.value = currentFormat;
+      renderQueue("convert");
+    }
+    function loadScript(src) {
+      return new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[data-library="${src}"]`);
+        if (existing?.dataset.loaded === "true") { resolve(); return; }
+        const script = existing || document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.dataset.library = src;
+        script.onload = () => { script.dataset.loaded = "true"; resolve(); };
+        script.onerror = () => { script.remove(); reject(new Error("A required library could not be downloaded. Check your internet connection and try again.")); };
+        if (!existing) document.head.append(script);
+      });
+    }
+    async function loadPdfLib() {
+      if (!window.PDFLib) await loadScript("https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js");
+      if (!window.PDFLib) throw new Error("PDF support failed to initialize. Reload the page and retry.");
+      return window.PDFLib;
+    }
+    async function loadZipLib() {
+      if (!window.JSZip) await loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js");
+      if (!window.JSZip) throw new Error("ZIP support failed to initialize. Reload the page and retry.");
+      return window.JSZip;
+    }
+    async function loadTiffLib() {
+      if (!state.tiffPromise) state.tiffPromise = loadScript("https://cdn.jsdelivr.net/npm/utif@3.1.0/UTIF.min.js")
+        .then(() => { if (!window.UTIF) throw new Error("TIFF decoder failed to initialize."); return window.UTIF; })
+        .catch(error => { state.tiffPromise = null; throw error; });
+      return state.tiffPromise;
+    }
+    async function decodeImage(file) {
+      if (["tif", "tiff"].includes(extension(file))) {
+        const UTIF = await loadTiffLib();
+        const buffer = await file.arrayBuffer();
+        const pages = UTIF.decode(buffer);
+        if (!pages.length) throw new Error("This TIFF file contains no readable image.");
+        UTIF.decodeImage(buffer, pages[0]);
+        if (!pages[0].width || !pages[0].height || pages[0].width * pages[0].height > MAX_PIXELS) {
+          throw new Error("TIFF is empty or exceeds the 80-megapixel safety limit.");
+        }
+        const rgba = UTIF.toRGBA8(pages[0]);
+        const canvas = document.createElement("canvas");
+        canvas.width = pages[0].width; canvas.height = pages[0].height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable in this browser.");
+        context.putImageData(new ImageData(new Uint8ClampedArray(rgba), canvas.width, canvas.height), 0, 0);
+        return canvas;
+      }
+      const url = URL.createObjectURL(file);
+      try {
+        const image = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = () => reject(new Error("This browser could not decode the image. Try another image format."));
+          element.src = url;
+        });
+        if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > MAX_PIXELS) {
+          throw new Error("Image is empty or exceeds the 80-megapixel safety limit.");
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+        const context = canvas.getContext("2d", { alpha: true });
+        if (!context) throw new Error("Canvas is unavailable in this browser.");
+        if (["jpg", "jpeg", "bmp"].includes(extension(file))) {
+          context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height);
+        } else context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0);
+        return canvas;
+      } finally { URL.revokeObjectURL(url); }
+    }
+    async function encodeCanvas(canvas, format, quality) {
+      let source = canvas;
+      if (format === "jpeg") {
+        source = document.createElement("canvas");
+        source.width = canvas.width; source.height = canvas.height;
+        const context = source.getContext("2d");
+        if (!context) throw new Error("Canvas is unavailable in this browser.");
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, source.width, source.height);
+        context.drawImage(canvas, 0, 0);
+      }
+      const blob = await new Promise((resolve, reject) => source.toBlob(
+        result => result ? resolve(result) : reject(new Error(`This browser could not encode ${format.toUpperCase()} output.`)),
+        MIME_BY_FORMAT[format],
+        quality
+      ));
+      if (blob.type !== MIME_BY_FORMAT[format]) throw new Error(`${format.toUpperCase()} encoding is not supported by this browser.`);
+      return blob;
+    }
+    async function convertImage(file, format, quality, allowFallback = false) {
+      const canvas = await decodeImage(file);
+      const formats = allowFallback && format === "webp" ? ["webp", "jpeg", "png"] : [format];
+      let lastError;
+      for (const outputFormat of formats) {
+        try { return await encodeCanvas(canvas, outputFormat, quality); }
+        catch (error) { lastError = error; }
+      }
+      throw lastError;
+    }
+    async function convertPdf(file) {
+      const PDFLib = await loadPdfLib();
+      try {
+        const document = await PDFLib.PDFDocument.load(await file.arrayBuffer(), { updateMetadata: false });
+        return new Blob([await document.save({ useObjectStreams: true, addDefaultPage: false, objectsPerTick: 50 })], { type: MIME_BY_FORMAT.pdf });
+      } catch (error) {
+        throw new Error(`Could not read this PDF. It may be encrypted or damaged. ${error?.message || ""}`.trim());
+      }
+    }
+    function supportedVideoMime(format) {
+      if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== "function") return "";
+      const candidates = format === "mp4"
+        ? ["video/mp4;codecs=avc1.42E01E,mp4a.40.2", "video/mp4"]
+        : ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+      return candidates.find(type => MediaRecorder.isTypeSupported(type)) || "";
+    }
+    async function convertVideo(file, format, quality, progressCallback) {
+      const mimeType = supportedVideoMime(format);
+      if (!mimeType) throw new Error(`${format.toUpperCase()} recording is not supported by this browser. Try WebM or use the desktop tool.`);
+      const video = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      let stream;
+      let recorder;
+      const chunks = [];
+      try {
+        if (!video.captureStream && !video.mozCaptureStream) throw new Error("This browser cannot capture video for conversion.");
+        video.preload = "auto";
+        video.playsInline = true;
+        video.src = url;
+        await new Promise((resolve, reject) => {
+          video.onloadedmetadata = resolve;
+          video.onerror = () => reject(new Error("This browser could not decode the video or its codecs."));
+        });
+        if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error("This video has no playable duration.");
+        stream = (video.captureStream || video.mozCaptureStream).call(video);
+        if (!stream.getVideoTracks().length) throw new Error("No video track could be decoded from this file.");
+        const pixels = video.videoWidth * video.videoHeight;
+        const videoBitsPerSecond = Math.max(300_000, Math.min(12_000_000, Math.round(pixels * (0.2 + quality * 2.2))));
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 128_000 });
+        recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+        const stopped = new Promise((resolve, reject) => {
+          recorder.onstop = resolve;
+          recorder.onerror = event => reject(event.error || new Error("The browser video recorder failed."));
+        });
+        video.ontimeupdate = () => {
+          if (video.duration) progressCallback(Math.max(0, Math.min(99, Math.round(video.currentTime / video.duration * 100))));
+        };
+        video.onended = () => { if (recorder.state === "recording") recorder.stop(); };
+        recorder.start(250);
+        await video.play();
+        await stopped;
+        if (!chunks.length) throw new Error("The browser produced an empty video output.");
+        return new Blob(chunks, { type: mimeType });
+      } catch (error) {
+        throw new Error(`Video conversion failed. ${error?.message || "The browser codec may not be supported."}`);
+      } finally {
+        if (recorder?.state === "recording") recorder.stop();
+        stream?.getTracks().forEach(track => track.stop());
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        URL.revokeObjectURL(url);
+      }
+    }
+    async function processOne(file, operation, quality, progressCallback) {
+      const kind = fileKind(file);
+      const format = getOutputFormat(operation, file);
+      if (!isCompatibleTarget(kind, format)) throw new Error(`${kind.toUpperCase()} files cannot be converted to ${format.toUpperCase()}.`);
+      if (kind === "image") return convertImage(file, format, quality, operation === "compress");
+      if (kind === "pdf") return convertPdf(file);
+      return convertVideo(file, format, quality, progressCallback);
+    }
+    async function runJobs(operation) {
+      if (state.busy || !state.queues[operation].length) return;
+      state.busy = true;
+      const files = [...state.queues[operation]];
+      releaseResults(operation);
+      state.results[operation] = files.map(file => ({
+        file, blob: null, error: "", url: null,
+        format: getOutputFormat(operation, file),
+        outputName: makeOutputName(file, getOutputFormat(operation, file), operation)
+      }));
+      const prefix = operation === "compress" ? "progress" : "convertProgress";
+      const progressWrap = $(`${prefix}Wrap`);
+      const progressBar = $(`${prefix}Bar`);
+      const progressLabel = $(`${prefix}Label`);
+      const progressPercent = $(`${prefix}Percent`);
+      const statusId = operation === "compress" ? "compressStatus" : "convertStatus";
+      progressWrap.classList.add("visible");
+      progressBar.value = 0;
+      renderResults(operation);
+      try {
+        const quality = Number($(operation === "compress" ? "quality" : "convertQuality").value) / 100;
+        for (let index = 0; index < state.results[operation].length; index++) {
+          const result = state.results[operation][index];
+          progressLabel.textContent = `Processing ${index + 1} of ${files.length}`;
+          setStatus(statusId, `Working on ${result.file.name}…`);
+          try {
+            result.blob = await processOne(result.file, operation, quality, percent => {
+              progressLabel.textContent = `Encoding ${result.file.name}`;
+              progressPercent.textContent = `${percent}%`;
+            });
+            if (operation === "compress" && fileKind(result.file) === "image") {
+              const outputFormat = Object.keys(MIME_BY_FORMAT).find(format => MIME_BY_FORMAT[format] === result.blob.type);
+              if (outputFormat) {
+                result.format = outputFormat;
+                result.outputName = makeOutputName(result.file, outputFormat, operation);
+              }
+            }
+            addHistory(result.file, result.outputName, operation === "compress" ? "Compressed" : "Converted", result.blob.size);
+          } catch (error) {
+            result.error = error?.message || "Unexpected processing error.";
+          }
+          const completedPercent = Math.round((index + 1) / files.length * 100);
+          progressBar.value = completedPercent;
+          progressPercent.textContent = `${completedPercent}%`;
+          renderResults(operation);
+        }
+        const succeeded = state.results[operation].filter(result => result.blob).length;
+        const failures = state.results[operation].filter(result => result.error);
+        const failed = failures.length;
+        const firstIssue = failures[0]?.error ? ` First issue: ${failures[0].error}` : "";
+        const fallbackImages = operation === "compress"
+          ? state.results.compress.filter(result => result.blob && fileKind(result.file) === "image" && result.format !== "webp")
+          : [];
+        const fallbackFormats = [...new Set(fallbackImages.map(result => result.format.toUpperCase()))];
+        const fallbackNotice = fallbackImages.length
+          ? ` WebP unavailable; ${fallbackImages.length} image${fallbackImages.length === 1 ? "" : "s"} saved as ${fallbackFormats.join(" or ")}.`
+          : "";
+        setStatus(statusId, `Finished: ${succeeded} succeeded${failed ? `, ${failed} failed.${firstIssue}` : "."}${fallbackNotice}`, failed ? "error" : "success");
+        progressLabel.textContent = "Complete";
+      } finally {
+        state.busy = false;
+        renderQueue(operation);
+        renderResults(operation);
+      }
+    }
+    async function downloadZip() {
+      const results = state.results.compress.filter(result => result.blob);
+      if (state.busy || !results.length) return;
+      $("zipBtn").disabled = true;
+      try {
+        const JSZip = await loadZipLib();
+        const zip = new JSZip();
+        const names = new Set();
+        results.forEach(result => {
+          let name = result.outputName, suffix = 2;
+          while (names.has(name.toLowerCase())) {
+            const dot = name.lastIndexOf(".");
+            name = `${name.slice(0, dot)}_${suffix++}${name.slice(dot)}`;
+          }
+          names.add(name.toLowerCase());
+          zip.file(name, result.blob);
+        });
+        setStatus("compressStatus", "Preparing your ZIP archive…");
+        const archive = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 4 } });
+        downloadBlob(archive, "orbit-compressed-files.zip");
+        setStatus("compressStatus", `ZIP downloaded (${formatBytes(archive.size)}).`, "success");
+      } catch (error) {
+        setStatus("compressStatus", error?.message || "Could not create ZIP archive.", "error");
+      } finally { $("zipBtn").disabled = !state.results.compress.some(result => result.blob); }
+    }
+    function downloadBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = name;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+    function renderHistory() {
+      const list = $("historyList");
+      if (!list) return;
+      list.replaceChildren();
+      if (!state.history.length) {
+        const empty = document.createElement("p"); empty.className = "table-empty"; empty.textContent = "Completed jobs will appear here."; list.append(empty); return;
+      }
+      state.history.forEach(entry => {
+        const item = document.createElement("article"); item.className = "history-item";
+        const details = document.createElement("div"); details.style.minWidth = "0";
+        const name = document.createElement("div"); name.className = "history-name"; name.textContent = entry.name;
+        const detail = document.createElement("div"); detail.className = "history-detail";
+        const date = new Date(entry.date);
+        detail.textContent = `${entry.operation} · ${Number.isNaN(date.valueOf()) ? "Recent" : date.toLocaleString()} · ${formatBytes(entry.size)}`;
+        details.append(name, detail);
+        const badge = document.createElement("span"); badge.className = "history-badge"; badge.textContent = "Done";
+        item.append(details, badge); list.append(item);
+      });
+    }
+    function resetProgress(operation) {
+      const prefix = operation === "compress" ? "progress" : "convertProgress";
+      $(`${prefix}Wrap`).classList.remove("visible");
+      $(`${prefix}Bar`).value = 0;
+      $(`${prefix}Label`).textContent = "Ready";
+      $(`${prefix}Percent`).textContent = "0%";
+    }
+    function clearSelection(operation) {
+      if (state.busy) return;
+      state.queues[operation] = [];
+      releaseResults(operation);
+      renderQueue(operation);
+      renderResults(operation);
+      setStatus(operation === "compress" ? "compressStatus" : "convertStatus", "");
+      resetProgress(operation);
+    }
+    function setTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      $("themeSelect").value = theme;
+      try { localStorage.setItem("orbit-theme", theme); } catch {}
+    }
+    function initialize() {
+      try { setTheme(localStorage.getItem("orbit-theme") || "dark"); } catch { setTheme("dark"); }
+      showPage();
+      renderQueue("compress"); renderQueue("convert");
+      renderResults("compress"); renderResults("convert"); renderHistory();
+      $("quality").addEventListener("input", () => { $("qualityValue").textContent = `${$("quality").value}%`; });
+      $("convertQuality").addEventListener("input", () => { $("convertQualityValue").textContent = `${$("convertQuality").value}%`; });
+      $("themeToggle").addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+      $("themeSelect").addEventListener("change", event => setTheme(event.target.value));
+      window.addEventListener("hashchange", showPage);
+      $("fileInput").addEventListener("change", event => { validateFiles(event.target.files, "compress"); event.target.value = ""; });
+      $("convertFileInput").addEventListener("change", event => { validateFiles(event.target.files, "convert"); event.target.value = ""; });
+      [["dropZone", "compress"], ["convertDropZone", "convert"]].forEach(([id, operation]) => {
+        const zone = $(id);
+        ["dragenter", "dragover"].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.add("drag-active"); }));
+        ["dragleave", "drop"].forEach(name => zone.addEventListener(name, event => { event.preventDefault(); zone.classList.remove("drag-active"); }));
+        zone.addEventListener("drop", event => validateFiles(event.dataTransfer.files, operation));
+      });
+      $("outputFormat").addEventListener("change", () => {
+        releaseResults("convert"); resetProgress("convert"); renderQueue("convert"); renderResults("convert");
+        setStatus("convertStatus", "");
+      });
+      $("compressBtn").addEventListener("click", () => runJobs("compress"));
+      $("convertBtn").addEventListener("click", () => runJobs("convert"));
+      $("zipBtn").addEventListener("click", downloadZip);
+      $("clearBtn").addEventListener("click", () => clearSelection("compress"));
+      $("convertClearBtn").addEventListener("click", () => clearSelection("convert"));
+      $("clearHistoryBtn").addEventListener("click", () => { state.history = []; saveHistory(); });
+    }
+    initialize();
+  </script>
+</body>
+</html>
